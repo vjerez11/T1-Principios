@@ -10,6 +10,8 @@ PORT = 8889
 clientes_conectados = {}  # Ahora guarda {socket_conn: correo} para identificar clientes
 ejecutivos_conectados = {}  # Ahora guarda {socket_conn: correo} para identificar ejecutivos
 cartas_disponibles = []
+# Diccionario para mantener las conversaciones activas
+chat_activos = {}  # {correo_cliente: {correo_ejecutivo, mensajes: []}}
 
 def cargar_json(nombre_archivo):
     if not os.path.exists(nombre_archivo):
@@ -34,6 +36,38 @@ def guardar_historial(entrada):
     historial = cargar_json("historial.json")
     historial.append(entrada)
     guardar_json("historial.json", historial)
+
+def guardar_chat(correo_cliente, correo_ejecutivo, mensaje, enviado_por):
+    chats = cargar_json("chats.json")
+    
+    # Buscar un chat existente entre este cliente y ejecutivo
+    chat_existente = None
+    for chat in chats:
+        if chat["cliente"] == correo_cliente and chat["ejecutivo"] == correo_ejecutivo:
+            chat_existente = chat
+            break
+    
+    # Si no existe, crear uno nuevo
+    if not chat_existente:
+        chat_existente = {
+            "cliente": correo_cliente,
+            "ejecutivo": correo_ejecutivo,
+            "mensajes": []
+        }
+        chats.append(chat_existente)
+    
+    # Añadir el nuevo mensaje
+    nuevo_mensaje = {
+        "fecha": datetime.now().isoformat(),
+        "emisor": enviado_por,
+        "contenido": mensaje
+    }
+    chat_existente["mensajes"].append(nuevo_mensaje)
+    
+    # Guardar en el archivo
+    guardar_json("chats.json", chats)
+    
+    return True
 
 def autenticar(usuario, tipo):
     lista = cargar_json("usuarios.json" if tipo == "cliente" else "ejecutivos.json")
@@ -268,7 +302,7 @@ def publicar_carta(nombre, precio):
     return f"Carta publicada exitosamente. ID: {nuevo_id}"
 
 def enviar_mensaje_ejecutivo(correo_cliente, mensaje):
-    # Por ahora solo guardamos en el historial
+    # Guardar en historial
     historial_entrada = {
         "accion": "mensaje_a_ejecutivo",
         "correo_cliente": correo_cliente,
@@ -278,17 +312,174 @@ def enviar_mensaje_ejecutivo(correo_cliente, mensaje):
     guardar_historial(historial_entrada)
     
     # Notificar a los ejecutivos conectados
-    for conn, correo in ejecutivos_conectados.items():
+    mensajes_enviados = 0
+    for conn, correo_ejecutivo in ejecutivos_conectados.items():
         try:
             notificacion = {
                 "tipo": "notificacion",
-                "mensaje": f"Mensaje de {correo_cliente}: {mensaje}"
+                "subtipo": "solicitud_chat",
+                "mensaje": f"Solicitud de chat de {correo_cliente}: {mensaje}",
+                "correo_cliente": correo_cliente
             }
             conn.send(json.dumps(notificacion).encode('utf-8'))
+            mensajes_enviados += 1
         except:
             pass
     
-    return "Mensaje enviado a los ejecutivos disponibles."
+    if mensajes_enviados > 0:
+        return "Mensaje enviado a los ejecutivos disponibles. Espere a que un ejecutivo acepte el chat."
+    else:
+        return "No hay ejecutivos disponibles en este momento. Su mensaje ha sido registrado."
+
+def notificar_chat_aceptado(correo_cliente, correo_ejecutivo):
+    # Buscar el socket del cliente por su correo
+    socket_cliente = None
+    for conn, correo in clientes_conectados.items():
+        if correo == correo_cliente:
+            socket_cliente = conn
+            break
+    
+    if socket_cliente:
+        try:
+            notificacion = {
+                "tipo": "notificacion",
+                "subtipo": "chat_aceptado",
+                "mensaje": f"El ejecutivo {correo_ejecutivo} ha aceptado su solicitud de chat.",
+                "correo_ejecutivo": correo_ejecutivo
+            }
+            socket_cliente.send(json.dumps(notificacion).encode('utf-8'))
+            
+            # Registrar inicio de chat en historial
+            historial_entrada = {
+                "accion": "inicio_chat",
+                "correo_cliente": correo_cliente,
+                "correo_ejecutivo": correo_ejecutivo,
+                "fecha": datetime.now().isoformat()
+            }
+            guardar_historial(historial_entrada)
+            
+            # Crear o actualizar el chat activo
+            if correo_cliente not in chat_activos:
+                chat_activos[correo_cliente] = {"correo_ejecutivo": correo_ejecutivo, "mensajes": []}
+            else:
+                chat_activos[correo_cliente]["correo_ejecutivo"] = correo_ejecutivo
+            
+            return True
+        except:
+            return False
+    return False
+
+def enviar_mensaje_chat(correo_emisor, correo_destinatario, mensaje, tipo_emisor):
+    # Determinar quién es el cliente y quién es el ejecutivo
+    correo_cliente = correo_emisor if tipo_emisor == "cliente" else correo_destinatario
+    correo_ejecutivo = correo_destinatario if tipo_emisor == "cliente" else correo_emisor
+    
+    # Registrar mensaje en archivo de chats
+    guardar_chat(correo_cliente, correo_ejecutivo, mensaje, correo_emisor)
+    
+    # Agregar mensaje al chat activo
+    if correo_cliente in chat_activos:
+        chat_activos[correo_cliente]["mensajes"].append({
+            "emisor": correo_emisor,
+            "mensaje": mensaje,
+            "fecha": datetime.now().isoformat()
+        })
+    
+    # Determinar socket destino
+    socket_destino = None
+    if tipo_emisor == "cliente":
+        # Buscar socket del ejecutivo
+        for conn, correo in ejecutivos_conectados.items():
+            if correo == correo_ejecutivo:
+                socket_destino = conn
+                break
+    else:
+        # Buscar socket del cliente
+        for conn, correo in clientes_conectados.items():
+            if correo == correo_cliente:
+                socket_destino = conn
+                break
+    
+    if socket_destino:
+        try:
+            mensaje_chat = {
+                "tipo": "mensaje_chat",
+                "emisor": correo_emisor,
+                "mensaje": mensaje,
+                "fecha": datetime.now().isoformat()
+            }
+            socket_destino.send(json.dumps(mensaje_chat).encode('utf-8'))
+            return "Mensaje enviado."
+        except:
+            return "Error al enviar mensaje."
+    
+    return "Destinatario no conectado. Mensaje guardado."
+
+def terminar_chat(correo_cliente, correo_ejecutivo, iniciado_por):
+    # Registrar fin de chat en historial
+    historial_entrada = {
+        "accion": "fin_chat",
+        "correo_cliente": correo_cliente,
+        "correo_ejecutivo": correo_ejecutivo,
+        "iniciado_por": iniciado_por,
+        "fecha": datetime.now().isoformat()
+    }
+    guardar_historial(historial_entrada)
+    
+    # Eliminar chat activo
+    if correo_cliente in chat_activos:
+        del chat_activos[correo_cliente]
+    
+    # Notificar a la otra parte
+    socket_destino = None
+    if iniciado_por == "cliente":
+        # Buscar socket del ejecutivo
+        for conn, correo in ejecutivos_conectados.items():
+            if correo == correo_ejecutivo:
+                socket_destino = conn
+                break
+    else:
+        # Buscar socket del cliente
+        for conn, correo in clientes_conectados.items():
+            if correo == correo_cliente:
+                socket_destino = conn
+                break
+    
+    if socket_destino:
+        try:
+            notificacion = {
+                "tipo": "notificacion",
+                "subtipo": "chat_terminado",
+                "mensaje": f"El chat ha sido terminado por {iniciado_por}."
+            }
+            socket_destino.send(json.dumps(notificacion).encode('utf-8'))
+        except:
+            pass
+    
+    return "Chat terminado."
+
+def obtener_historico_chats(correo, tipo):
+    chats = cargar_json("chats.json")
+    
+    if tipo == "cliente":
+        historico = [chat for chat in chats if chat["cliente"] == correo]
+    else:
+        historico = [chat for chat in chats if chat["ejecutivo"] == correo]
+    
+    return json.dumps(historico, indent=4)
+
+def obtener_chat_activo(correo_cliente, correo_ejecutivo):
+    # Buscar en memoria si existe un chat activo
+    if correo_cliente in chat_activos and chat_activos[correo_cliente]["correo_ejecutivo"] == correo_ejecutivo:
+        return json.dumps(chat_activos[correo_cliente], indent=4)
+    
+    # Si no está en memoria, verificar en archivo
+    chats = cargar_json("chats.json")
+    for chat in chats:
+        if chat["cliente"] == correo_cliente and chat["ejecutivo"] == correo_ejecutivo:
+            return json.dumps(chat, indent=4)
+    
+    return json.dumps({"error": "No existe un chat entre estos usuarios"})
 
 def listar_compras_cliente(correo):
     compras = cargar_json("compras.json")
@@ -334,9 +525,21 @@ def manejar_cliente_regular(conn, correo):
                 id_compra = msg.get("id_compra")
                 respuesta = confirmar_envio(correo, id_compra)
             
-            elif accion == "6":  # Contactar ejecutivo
+            elif accion == "6":  # Contactar ejecutivo (solicitar chat)
                 mensaje = msg.get("mensaje")
                 respuesta = enviar_mensaje_ejecutivo(correo, mensaje)
+            
+            elif accion == "7":  # Ver histórico de chats
+                respuesta = obtener_historico_chats(correo, "cliente")
+            
+            elif accion == "enviar_mensaje_chat":  # Enviar mensaje en chat activo
+                correo_ejecutivo = msg.get("correo_ejecutivo")
+                mensaje = msg.get("mensaje")
+                respuesta = enviar_mensaje_chat(correo, correo_ejecutivo, mensaje, "cliente")
+            
+            elif accion == "terminar_chat":  # Terminar un chat activo
+                correo_ejecutivo = msg.get("correo_ejecutivo")
+                respuesta = terminar_chat(correo, correo_ejecutivo, "cliente")
 
             conn.send(respuesta.encode('utf-8'))
             
@@ -363,7 +566,7 @@ def manejar_ejecutivo(conn, correo):
                 respuesta = f"Clientes conectados: {clientes_str if clientes_str else 'Ninguno'}"
             
             elif comando == ":history":
-                cliente_correo = input("Correo del cliente: ")  # Debería ser parte del comando
+                cliente_correo = msg.get("correo_cliente")
                 respuesta = obtener_historial_cliente(cliente_correo)
             
             elif comando == ":catalogue":
@@ -371,13 +574,43 @@ def manejar_ejecutivo(conn, correo):
             
             elif comando == ":buy":
                 # En una versión real, se solicitaría el correo del cliente y el ID de la carta
-                respuesta = "Funcionalidad no implementada: ejecutivo comprando para cliente"
+                cliente_correo = msg.get("correo_cliente")
+                id_carta = msg.get("id_carta")
+                if cliente_correo and id_carta:
+                    respuesta = comprar_carta(cliente_correo, id_carta)
+                else:
+                    respuesta = "Datos incompletos para realizar la compra"
             
             elif comando == ":publish":
-                # En una versión real, se solicitarían los detalles de la carta
-                nombre = input("Nombre de la carta: ")  # Debería ser parte del comando
-                precio = input("Precio de la carta: ")  # Debería ser parte del comando
-                respuesta = publicar_carta(nombre, float(precio))
+                nombre = msg.get("nombre")
+                precio = msg.get("precio")
+                if nombre and precio:
+                    respuesta = publicar_carta(nombre, float(precio))
+                else:
+                    respuesta = "Datos incompletos para publicar carta"
+            
+            elif comando == ":chats":
+                respuesta = obtener_historico_chats(correo, "ejecutivo")
+            
+            elif comando == ":accept_chat":
+                cliente_correo = msg.get("correo_cliente")
+                if notificar_chat_aceptado(cliente_correo, correo):
+                    respuesta = f"Chat con {cliente_correo} iniciado correctamente"
+                else:
+                    respuesta = f"Error al iniciar chat con {cliente_correo}"
+            
+            elif comando == ":send_message":
+                cliente_correo = msg.get("correo_cliente")
+                mensaje = msg.get("mensaje")
+                respuesta = enviar_mensaje_chat(correo, cliente_correo, mensaje, "ejecutivo")
+            
+            elif comando == ":end_chat":
+                cliente_correo = msg.get("correo_cliente")
+                respuesta = terminar_chat(cliente_correo, correo, "ejecutivo")
+            
+            elif comando == ":active_chats":
+                chats_activos_ejecutivo = {k: v for k, v in chat_activos.items() if v["correo_ejecutivo"] == correo}
+                respuesta = json.dumps(chats_activos_ejecutivo, indent=4)
             
             elif comando == ":disconnect":
                 respuesta = "Desconectando..."
@@ -444,7 +677,7 @@ def main():
     cartas_disponibles = cargar_json("cartas.json")
 
     # Aseguramos que todos los archivos existan
-    for archivo in ["usuarios.json", "ejecutivos.json", "historial.json", "compras.json", "devoluciones.json"]:
+    for archivo in ["usuarios.json", "ejecutivos.json", "historial.json", "compras.json", "devoluciones.json", "chats.json"]:
         if not os.path.exists(archivo):
             guardar_json(archivo, [])
     
@@ -465,7 +698,7 @@ def main():
         s.bind((HOST, PORT))
         s.listen(10)
         print(f"[SERVIDOR] Corriendo en {HOST}:{PORT}")
-        print("[SERVIDOR] Ahora solo se permite el registro de clientes")
+        print("[SERVIDOR] Sistema de chat en vivo implementado")
 
         while True:
             conn, addr = s.accept()
