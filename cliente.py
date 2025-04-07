@@ -72,67 +72,86 @@ def login():
 def cliente_menu(sock):
     while True:
         print("\n=== Menú Cliente ===")
-        print("1. Ver historial")
-        print("2. Comprar carta")
-        print("3. Solicitar devolución")
-        print("4. Contactar ejecutivo")
-        print("5. Salir")
+        print("1. Cambio de Contraseña")
+        print("2. Ver historial")
+        print("3. Catálogo de productos / Comprar productos")
+        print("4. Solicitar devolución")
+        print("5. Confirmar envío")
+        print("6. Contactar ejecutivo")
+        print("7. Salir")
         
         opcion = input("\nSeleccione una opción: ")
         
         if opcion == "1":
+            #Da aviso de lo que se hace 
             mensaje = {"accion": "1"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
-        
+            #Se programa lo que debe hacer 
+
         elif opcion == "2":
-            # Primero listar cartas
             mensaje = {"accion": "2"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
+            #Se programa lo que debe hacer 
+        
+        elif opcion == "3":
+            #Da aviso a lo que se hace
+            mensaje = {"accion": "3"}
+            respuesta = enviar_mensaje(sock, mensaje)
+            print(respuesta)
             
+            #Se programa lo que debe hacer 
             id_carta = input("Ingrese ID de carta para comprar (o 0 para cancelar): ")
             if id_carta != "0":
                 mensaje = {"accion": "2", "id_carta": int(id_carta)}
                 respuesta = enviar_mensaje(sock, mensaje)
                 print(respuesta)
         
-        elif opcion == "3":
+        elif opcion == "4":
             # Listar compras para devolución
-            mensaje = {"accion": "3"}
+            mensaje = {"accion": "4"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
             
+            #Se programa lo que debe hacer 
             id_compra = input("Ingrese ID de compra para devolver (o 0 para cancelar): ")
             if id_compra != "0":
                 mensaje = {"accion": "3", "id_compra": int(id_compra)}
                 respuesta = enviar_mensaje(sock, mensaje)
                 print(respuesta)
+
+        elif opcion == "5":
+            mensaje = {"accion": "5"}
+            respuesta = enviar_mensaje(sock, mensaje)
+            print(respuesta)
+            #Se programa lo que debe hacer 
         
-        elif opcion == "4":
+        elif opcion == "6":
             mensaje = input("Mensaje para el ejecutivo: ")
-            mensaje_obj = {"accion": "4", "mensaje": mensaje}
+            mensaje_obj = {"accion": "6", "mensaje": mensaje}
             respuesta = enviar_mensaje(sock, mensaje_obj)
             print(respuesta)
         
-        elif opcion == "5":
+        elif opcion == "7":
             print("Sesión finalizada.")
             break
         
         else:
             print("Opción no válida.")
+            break
 
 def ejecutivo_menu(sock):
     while True:
         print("\n=== Menú Ejecutivo ===")
         print("1. :status - Ver estado")
-        print("2. :publish - Publicar carta")
-        print("3. :list - Listar cartas")
-        print("4. :buy - Comprar para cliente")
-        print("5. :returns - Ver devoluciones")
-        print("6. :approve - Aprobar devolución")
-        # Eliminada la opción 7 para crear usuario
-        print("7. :disconnect - Salir")
+        print("2. :details - Clientes Conectados")
+        print("3. :history - Ver al Cliente")
+        print("4. :catalogue - Mostrar Catálogo")
+        print("5. :buy - Comprarle al Cliente")
+        print("6. :publish - Publicar carta")
+        print("7. :disconnect - Terminar conexión")
+        print("8. :exit - Desconectarse")
         
         opcion = input("\nSeleccione una opción: ")
         
@@ -142,45 +161,28 @@ def ejecutivo_menu(sock):
             print(respuesta)
         
         elif opcion == "2":
-            nombre = input("Nombre de la carta: ")
-            precio = input("Precio: ")
-            mensaje = {
-                "comando": ":publish", 
-                "datos_carta": {
-                    "nombre": nombre, 
-                    "precio": float(precio)
-                }
-            }
+            mensaje = {"comando": ":details"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
-        
+
+
         elif opcion == "3":
-            mensaje = {"comando": ":list"}
+            mensaje = {"comando": ":history"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
         
         elif opcion == "4":
-            cliente = input("Correo del cliente: ")
-            id_carta = input("ID de la carta: ")
-            mensaje = {
-                "comando": ":buy", 
-                "cliente": cliente, 
-                "id_carta": int(id_carta)
-            }
+            mensaje = {"comando": ":catalogue"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
         
         elif opcion == "5":
-            mensaje = {"comando": ":returns"}
+            mensaje = {"comando": ":buy"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
         
         elif opcion == "6":
-            id_devolucion = input("ID de devolución a aprobar: ")
-            mensaje = {
-                "comando": ":approve", 
-                "id_devolucion": int(id_devolucion)
-            }
+            mensaje = {"comando": ":publish"}
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
         
@@ -189,6 +191,11 @@ def ejecutivo_menu(sock):
             respuesta = enviar_mensaje(sock, mensaje)
             print(respuesta)
             break
+
+        elif opcion == "8":
+            mensaje = {"comando": ":exit"}
+            respuesta = enviar_mensaje(sock, mensaje)
+            print(respuesta)
         
         else:
             print("Opción no válida.")
