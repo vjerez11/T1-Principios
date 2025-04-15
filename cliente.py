@@ -100,7 +100,6 @@ def cliente_menu(sock, correo):
         elif opcion == "2":
             mensaje = {"accion": "2"}
             respuesta = enviar_mensaje(sock, mensaje)
-            print("\n=== Historial del Cliente ===")
             print(respuesta)
             input("\nPresione Enter para continuar...")
         
