@@ -155,6 +155,7 @@ def cambiar_contrasena(correo, nueva_contrasena, tipo="cliente"):
     return "Error: Usuario no encontrado."
 
 def obtener_historial_cliente(correo):
+
     historial = cargar_json("historial.json")
     compras = cargar_json("compras.json")
     devoluciones = cargar_json("devoluciones.json")
@@ -163,18 +164,156 @@ def obtener_historial_cliente(correo):
     compras_cliente = [c for c in compras if c.get("correo_cliente") == correo]
     devoluciones_cliente = [d for d in devoluciones if d.get("correo_cliente") == correo]
     
-    resultado = {
-        "acciones": historial_cliente,
-        "compras": compras_cliente,
-        "devoluciones": devoluciones_cliente
-    }
+    # Ordenar todos los registros por fecha (más reciente primero)
+    historial_cliente = sorted(historial_cliente, key=lambda x: x.get("fecha", ""), reverse=False)
+    compras_cliente = sorted(compras_cliente, key=lambda x: x.get("fecha_compra", ""), reverse=False)
+    devoluciones_cliente = sorted(devoluciones_cliente, key=lambda x: x.get("fecha_devolucion", ""), reverse=False)
     
-    return json.dumps(resultado, indent=4)
+    # Crear el encabezado con bordes decorativos
+    resultado = "\n" + "=" * 60 + "\n"
+    resultado += f"{'HISTORIAL DE CLIENTE:':^60}\n"
+    resultado += f"{'- ' + correo + ' -':^60}\n"
+    resultado += "=" * 60 + "\n\n"
+    
+    # Sección de acciones generales
+    if historial_cliente:
+        resultado += f"{'ACCIONES REALIZADAS:':^60}\n"
+        resultado += "-" * 60 + "\n"
+        for i, accion in enumerate(historial_cliente, 1):
+            # Formatear la fecha para hacerla más legible
+            fecha_str = accion.get("fecha", "Fecha desconocida").split("T")
+            fecha = fecha_str[0]
+            hora = fecha_str[1][:8] if len(fecha_str) > 1 else ""
+            
+            # Formatear la acción para mejor visualización
+            nombre_accion = accion.get("accion", "desconocida").replace("_", " ").title()
+            
+            resultado += f"{i:2}. [{fecha} {hora}] {nombre_accion}\n"
+            
+            # Mostrar detalles adicionales si existen
+            detalles = accion.get("detalles", {})
+            if detalles:
+                for clave, valor in detalles.items():
+                    clave_formateada = clave.replace("_", " ").capitalize()
+                    resultado += f"    ◦ {clave_formateada}: {valor}\n"
+            resultado += "\n"
+    else:
+        resultado += "No hay acciones registradas para este cliente.\n\n"
+    
+    # Sección de compras
+    if compras_cliente:
+        resultado += f"{'COMPRAS REALIZADAS:':^60}\n"
+        resultado += "-" * 60 + "\n"
+        for i, compra in enumerate(compras_cliente, 1):
+            # Formatear fecha de compra
+            fecha_str = compra.get("fecha_compra", "Fecha desconocida").split("T")
+            fecha = fecha_str[0]
+            hora = fecha_str[1][:8] if len(fecha_str) > 1 else ""
+            
+            # Obtener detalles de la carta comprada
+            carta_id = compra.get("carta_id", "?")
+            nombre_carta = compra.get("nombre_carta", "Carta desconocida")
+            precio = compra.get("precio", 0.0)
+            
+            resultado += f"{i:2}. [{fecha} {hora}] Compra: {nombre_carta}\n"
+            resultado += f"    ◦ ID Carta: {carta_id}\n"
+            resultado += f"    ◦ Precio pagado: ${precio:.2f}\n\n"
+    else:
+        resultado += "No hay compras registradas para este cliente.\n\n"
+    
+    # Sección de devoluciones
+    if devoluciones_cliente:
+        resultado += f"{'DEVOLUCIONES REALIZADAS:':^60}\n"
+        resultado += "-" * 60 + "\n"
+        for i, devolucion in enumerate(devoluciones_cliente, 1):
+            # Formatear fecha de devolución
+            fecha_str = devolucion.get("fecha_devolucion", "Fecha desconocida").split("T")
+            fecha = fecha_str[0]
+            hora = fecha_str[1][:8] if len(fecha_str) > 1 else ""
+            
+            # Obtener detalles de la carta devuelta
+            carta_id = devolucion.get("carta_id", "?")
+            nombre_carta = devolucion.get("nombre_carta", "Carta desconocida")
+            monto_devuelto = devolucion.get("monto_devuelto", 0.0)
+            
+            resultado += f"{i:2}. [{fecha} {hora}] Devolución: {nombre_carta}\n"
+            resultado += f"    ◦ ID Carta: {carta_id}\n"
+            resultado += f"    ◦ Monto devuelto: ${monto_devuelto:.2f}\n"
+            
+            # Mostrar motivo de devolución si existe
+            motivo = devolucion.get("motivo", "")
+            if motivo:
+                resultado += f"    ◦ Motivo: {motivo}\n"
+            resultado += "\n"
+    else:
+        resultado += "No hay devoluciones registradas para este cliente.\n\n"
+    
+    # Pie de página
+    resultado += "=" * 60 + "\n"
+    resultado += f"{'Fin del historial':^60}\n"
+    resultado += "=" * 60 + "\n"
+    
+    return resultado
 
 def obtener_catalogo():
     cartas = cargar_json("cartas.json")
     catalogo = [carta for carta in cartas if carta.get("disponible", True)]
-    return json.dumps(catalogo, indent=4)
+    
+    # Crear el encabezado con bordes decorativos
+    resultado = "\n" + "=" * 60 + "\n"
+    resultado += f"{'CATÁLOGO DE CARTAS DISPONIBLES':^60}\n"
+    resultado += "=" * 60 + "\n\n"
+    
+    # Verificar si hay cartas disponibles
+    if not catalogo:
+        resultado += "No hay cartas disponibles en el catálogo actualmente.\n\n"
+    else:
+        # Ordenar cartas por nombre para mejor visualización
+        catalogo = sorted(catalogo, key=lambda x: x.get("nombre", ""), reverse=False)
+        
+        # Mostrar el número total de cartas disponibles
+        resultado += f"{'Total de cartas disponibles: ' + str(len(catalogo)):^60}\n"
+        resultado += "-" * 60 + "\n\n"
+        
+        # Mostrar cada carta con sus detalles
+        for i, carta in enumerate(catalogo, 1):
+            nombre = carta.get("nombre", "Sin nombre")
+            carta_id = carta.get("id", "?")
+            precio = carta.get("precio", 0.0)
+            categoria = carta.get("categoria", "No especificada")
+            rareza = carta.get("rareza", "Común")
+            
+            # Encabezado para cada carta
+            resultado += f"{i:2}. {nombre} (ID: {carta_id})\n"
+            resultado += f"    {'-' * 40}\n"
+            
+            # Detalles de la carta
+            resultado += f"    ◦ Precio: ${precio:.2f}\n"
+            resultado += f"    ◦ Categoría: {categoria}\n"
+            resultado += f"    ◦ Rareza: {rareza}\n"
+            
+            # Mostrar descripción si existe
+            descripcion = carta.get("descripcion", "")
+            if descripcion:
+                resultado += f"    ◦ Descripción: {descripcion}\n"
+                
+            # Mostrar atributos adicionales si existen
+            atributos = carta.get("atributos", {})
+            if atributos:
+                resultado += f"    ◦ Atributos:\n"
+                for clave, valor in atributos.items():
+                    clave_formateada = clave.replace("_", " ").capitalize()
+                    resultado += f"      - {clave_formateada}: {valor}\n"
+            
+            # Separador entre cartas
+            resultado += "\n"
+    
+    # Pie de página
+    resultado += "=" * 60 + "\n"
+    resultado += f"{'Fin del catálogo':^60}\n"
+    resultado += "=" * 60 + "\n"
+    
+    return resultado
 
 def comprar_carta(correo, id_carta):
     cartas = cargar_json("cartas.json")
