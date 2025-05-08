@@ -81,9 +81,6 @@ def registro():
         except Exception as e:
             print(f"Error: {e}")
 
-
-
-
 def login():
     print("\n=== Iniciar Sesión ===")
     tipo = input("Tipo (cliente/ejecutivo): ").lower()
@@ -264,10 +261,8 @@ def ejecutivo_menu(sock, correo):
         print("4. :catalogue - Mostrar catálogo")
         print("5. :buy - Comprarle a un cliente")
         print("6. :publish - Publicar nueva carta")
-        print("7. :chats - Ver historial de chats")  # Nueva opción
-        print("8. :active_chats - Ver chats activos")  # Nueva opción
-        print("9. Gestión de solicitudes de chat")  # Nueva opción
-        print("10. :disconnect - Terminar conexión")
+        print("7. :chats - Conectarse a un chat")  # Nueva opción
+        print("8. :disconnect - Terminar conexión")
 
         
         opcion = input("\nSeleccione una opción: ")
@@ -331,88 +326,8 @@ def ejecutivo_menu(sock, correo):
 
             except Exception as e:
                 print(f"Error al conectarse al chat: {e}")
-
         
         elif opcion == "8":
-            mensaje = {"comando": ":active_chats"}
-            respuesta = enviar_mensaje(sock, mensaje)
-            print("\n=== Chats Activos ===")
-            print(respuesta)
-            input("\nPresione Enter para continuar...")
-        
-        elif opcion == "9":
-            # Verificar solicitudes pendientes
-            mensaje = {"comando": ":pending_chats"}
-            respuesta = enviar_mensaje(sock, mensaje)
-            
-            try:
-                solicitudes = json.loads(respuesta)
-                if not solicitudes:
-                    print("No hay solicitudes de chat pendientes.")
-                else:
-                    print("\n=== Solicitudes de Chat Pendientes ===")
-                    for i, solicitud in enumerate(solicitudes):
-                        print(f"{i+1}. Cliente: {solicitud['correo_cliente']}")
-                        print(f"   Mensaje: {solicitud['mensaje']}")
-                        print(f"   Fecha: {solicitud['fecha']}")
-                    
-                    idx = input("\nSeleccione número de solicitud para aceptar (o 0 para volver): ")
-                    if idx != "0":
-                        try:
-                            num = int(idx) - 1
-                            if 0 <= num < len(solicitudes):
-                                correo_cliente = solicitudes[num]['correo_cliente']
-                                mensaje = {
-                                    "comando": ":accept_chat", 
-                                    "correo_cliente": correo_cliente
-                                }
-                                respuesta = enviar_mensaje(sock, mensaje)
-                                print(respuesta)
-                                
-                                # Entrar en modo chat
-                                print(f"\n=== Chat con {correo_cliente} ===")
-                                print("[Escribe 'salir' para terminar el chat]")
-                                
-                                while True:
-                                    mensaje_texto = input(f"Tú > ")
-                                    if mensaje_texto.lower() == "salir":
-                                        # Terminar chat
-                                        mensaje = {
-                                            "comando": ":end_chat", 
-                                            "correo_cliente": correo_cliente
-                                        }
-                                        respuesta = enviar_mensaje(sock, mensaje)
-                                        print(respuesta)
-                                        break
-                                    
-                                    # Enviar mensaje
-                                    mensaje = {
-                                        "comando": ":send_message", 
-                                        "correo_cliente": correo_cliente, 
-                                        "mensaje": mensaje_texto
-                                    }
-                                    respuesta = enviar_mensaje(sock, mensaje)
-                                    print(f"Estado: {respuesta}")
-                                    
-                                    # Verificar mensajes nuevos (simulado - en app real usar hilos)
-                                    time.sleep(1)
-                                    mensaje = {"comando": ":check_messages", "correo_cliente": correo_cliente}
-                                    respuesta = enviar_mensaje(sock, mensaje)
-                                    try:
-                                        nuevos = json.loads(respuesta)
-                                        if nuevos and len(nuevos) > 0:
-                                            for msg in nuevos:
-                                                print(f"{correo_cliente} > {msg['mensaje']}")
-                                    except:
-                                        pass
-                            else:
-                                print("Número de solicitud inválido.")
-                        except ValueError:
-                            print("Entrada inválida.")
-            except:
-                print(respuesta)  # Si no es JSON, mostrar el mensaje de error
-        
-        elif opcion == "10":
             comando = ":disconnect"
             mensaje = {"comando": comando}
             respuesta = enviar_mensaje(sock, mensaje)
