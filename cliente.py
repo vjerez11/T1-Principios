@@ -3,6 +3,8 @@ import json
 import sys
 import getpass
 import time
+import threading
+import time
 
 HOST = '127.0.0.1'
 PORT = 8889
@@ -15,6 +17,44 @@ def enviar_mensaje(sock, mensaje):
     except Exception as e:
         print(f"Error al enviar mensaje: {e}")
         return "Error de comunicación con el servidor"
+    
+
+def enviar_mensajes_chat(sock):
+    while True:
+        mensaje = input()
+        sock.send(mensaje.encode('utf-8'))
+        if mensaje.lower() == "/salir":
+            break
+
+def recibir_mensajes_chat(sock):
+    while True:
+        try:
+            mensaje = sock.recv(1024).decode('utf-8')
+            if mensaje:
+                print(mensaje)
+            else:
+                break
+        except:
+            break
+
+def iniciar_chat_ejecutivo(sock, correo):
+
+    # Recibir y responder preguntas del servidor
+    time.sleep(0.2)
+    sock.send(correo.encode('utf-8'))
+    username = sock.recv(1024).decode('utf-8')
+
+    mensaje = sock.recv(1024).decode('utf-8')
+    sala = input(mensaje)
+    sock.send(sala.encode('utf-8'))
+
+    print(f"Conectado como {username} en la sala '{sala}' — escribe '/salir' para salir.\n")
+
+    threading.Thread(target=recibir_mensajes_chat, args=(sock,)).start()
+    enviar_mensajes_chat(sock)
+    sock.close()
+
+
 
 def registro():
     print("\n=== Registro de Cliente ===")
@@ -40,6 +80,9 @@ def registro():
             print(respuesta)
         except Exception as e:
             print(f"Error: {e}")
+
+
+
 
 def login():
     print("\n=== Iniciar Sesión ===")
@@ -73,6 +116,21 @@ def login():
         except Exception as e:
             print(f"Error: {e}")
 
+
+
+def iniciar_chat(sock, correo):
+
+    time.sleep(0.2) #delay para asegurar que el socket esté listo
+    sock.send(correo.encode('utf-8'))
+    sala = sock.recv(1024).decode('utf-8')
+    username = sock.recv(1024).decode('utf-8')
+    print(f"Conectado como {username} en la sala {sala} — escribe '/salir' para salir.\n")
+
+    threading.Thread(target=recibir_mensajes_chat, args=(sock,)).start()
+    enviar_mensajes_chat(sock)
+    sock.close()
+
+
 def cliente_menu(sock, correo):
     chat_activo = None
     correo_ejecutivo = None
@@ -100,7 +158,6 @@ def cliente_menu(sock, correo):
         elif opcion == "2":
             mensaje = {"accion": "2"}
             respuesta = enviar_mensaje(sock, mensaje)
-            print("\n=== Historial del Cliente ===")
             print(respuesta)
             input("\nPresione Enter para continuar...")
         
@@ -154,102 +211,28 @@ def cliente_menu(sock, correo):
                     print("ID de compra debe ser un número.")
         
         elif opcion == "6":
-            mensaje_texto = input("Mensaje para el ejecutivo: ")
-            mensaje = {"accion": "6", "mensaje": mensaje_texto}
-            respuesta = enviar_mensaje(sock, mensaje)
-            print(respuesta)
-            
-            # Iniciar bucle de chat si es aceptado
-            print("\nEsperando respuesta del ejecutivo...")
-            print("(Puedes volver al menú principal presionando Enter)")
-            
-            # Implementar una forma de verificar si hay mensajes nuevos mientras espera
-            # En una aplicación real, esto debería manejarse con hilos o asincrónicamente
+            try:
+                # Crear NUEVO socket para el chat
+                chat_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                chat_sock.connect((HOST, PORT))
+
+                # Enviar mensaje inicial para indicar que es un chat
+                mensaje_inicio_chat = {
+                    "modo": "chat"
+                }
+                chat_sock.send(json.dumps(mensaje_inicio_chat).encode('utf-8'))
+
+                print("\nConectando al chat con el ejecutivo...")
+                iniciar_chat(chat_sock,correo)  # Tu función iniciar_chat() ya está lista
+
+            except Exception as e:
+                print(f"Error al iniciar el chat: {e}")
         
         elif opcion == "7":
-            # Ver chat activo
-            if chat_activo and correo_ejecutivo:
-                print(f"\n=== Chat Activo con {correo_ejecutivo} ===")
-                print("\nMensajes:")
-                try:
-                    # Solicitar mensajes recientes
-                    mensaje = {
-                        "accion": "obtener_chat_activo", 
-                        "correo_ejecutivo": correo_ejecutivo
-                    }
-                    respuesta = enviar_mensaje(sock, mensaje)
-                    chat_data = json.loads(respuesta)
-                    
-                    # Mostrar mensajes
-                    for msg in chat_data.get("mensajes", []):
-                        emisor = "Tú" if msg["emisor"] == correo else correo_ejecutivo
-                        print(f"{emisor}: {msg['mensaje']}")
-                    
-                    # Modo chat
-                    print("\n[Modo Chat - escribe 'salir' para volver al menú]")
-                    while True:
-                        mensaje_texto = input("> ")
-                        if mensaje_texto.lower() == "salir":
-                            break
-                            
-                        mensaje = {
-                            "accion": "enviar_mensaje_chat", 
-                            "correo_ejecutivo": correo_ejecutivo, 
-                            "mensaje": mensaje_texto
-                        }
-                        respuesta = enviar_mensaje(sock, mensaje)
-                        print(f"Estado: {respuesta}")
-                        
-                        # Simular recepción de mensaje (en una app real se usarían hilos)
-                        time.sleep(1)
-                        mensaje = {"accion": "check_nuevos_mensajes"}
-                        respuesta = enviar_mensaje(sock, mensaje)
-                        try:
-                            nuevos = json.loads(respuesta)
-                            if nuevos and len(nuevos) > 0:
-                                for msg in nuevos:
-                                    print(f"{correo_ejecutivo}: {msg['mensaje']}")
-                        except:
-                            pass
-                except Exception as e:
-                    print(f"Error al mostrar chat: {e}")
-            else:
-                print("No tienes un chat activo. Solicita un chat primero usando la opción 6.")
+            pass
         
         elif opcion == "8":
-            # Ver histórico de chats
-            mensaje = {"accion": "7"}  # El servidor usa 7 para histórico de chats
-            respuesta = enviar_mensaje(sock, mensaje)
-            print("\n=== Histórico de Chats ===")
-            try:
-                chats = json.loads(respuesta)
-                if not chats:
-                    print("No tienes chats previos.")
-                else:
-                    for i, chat in enumerate(chats):
-                        print(f"\nChat {i+1} con {chat['ejecutivo']}")
-                        print(f"Total mensajes: {len(chat['mensajes'])}")
-                    
-                    # Permitir ver un chat específico
-                    seleccion = input("\nSeleccione un número de chat para ver los mensajes (o 0 para volver): ")
-                    if seleccion != "0":
-                        try:
-                            idx = int(seleccion) - 1
-                            if 0 <= idx < len(chats):
-                                chat = chats[idx]
-                                print(f"\n=== Conversación con {chat['ejecutivo']} ===")
-                                for msg in chat['mensajes']:
-                                    emisor = "Tú" if msg['emisor'] == correo else chat['ejecutivo']
-                                    fecha = msg['fecha'].split('T')[0]
-                                    print(f"[{fecha}] {emisor}: {msg['contenido']}")
-                            else:
-                                print("Número de chat inválido.")
-                        except ValueError:
-                            print("Entrada inválida.")
-            except:
-                print(respuesta)  # Si no es JSON, mostrar el mensaje de error
-            
-            input("\nPresione Enter para continuar...")
+            pass
         
         elif opcion == "9":
             print("Sesión finalizada.")
@@ -332,11 +315,23 @@ def ejecutivo_menu(sock, correo):
                 print("El precio debe ser un número válido.")
         
         elif opcion == "7":
-            mensaje = {"comando": ":chats"}
-            respuesta = enviar_mensaje(sock, mensaje)
-            print("\n=== Histórico de Chats ===")
-            print(respuesta)
-            input("\nPresione Enter para continuar...")
+            try:
+                # Crear NUEVO socket para el chat
+                chat_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                chat_sock.connect((HOST, PORT))
+
+                # Enviar mensaje inicial para indicar que es un chat
+                mensaje_inicio_chat = {
+                    "modo": "chat-ejecutivo"
+                }
+                chat_sock.send(json.dumps(mensaje_inicio_chat).encode('utf-8'))
+
+                print("\nConectando al chat con el ejecutivo...")
+                iniciar_chat_ejecutivo(chat_sock,correo)  # Tu función iniciar_chat() ya está lista
+
+            except Exception as e:
+                print(f"Error al conectarse al chat: {e}")
+
         
         elif opcion == "8":
             mensaje = {"comando": ":active_chats"}
